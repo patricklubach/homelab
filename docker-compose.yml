@@ -1,0 +1,98 @@
+version: '3'
+
+services:
+  reverse-proxy:
+    # The official v2 Traefik docker image
+    image: traefik:v2.11@
+    restart: unless-stopped
+    # Enables the web UI and tells Traefik to listen to docker
+    command:
+      - --api.insecure=true
+      - --providers.docker
+      - --entryPoints.web.address=:80
+      - --entryPoints.websecure.address=:443
+      - --entryPoints.dns.address=:53
+      - --serversTransport.insecureSkipVerify=true
+    ports:
+      # The HTTP port
+      - "80:80"
+      - "443:443"
+      # The Web UI (enabled by --api.insecure=true)
+      - "8080:8080"
+    volumes:
+      # So that Traefik can listen to the Docker events
+      - /var/run/docker.sock:/var/run/docker.sock
+
+  portainer:
+    image: portainer/portainer-ce:2.19.4
+    volumes:
+      - portainer:/data
+      - /var/run/docker.sock:/var/run/docker.sock
+    restart: unless-stopped
+    labels:
+      - traefik.http.routers.portainer.rule=PathPrefix(`/portainer`)
+      - traefik.http.services.portainer.loadbalancer.server.port=9000
+      - traefik.http.routers.portainer.middlewares=portainer
+      - traefik.http.middlewares.portainer.stripprefix.prefixes=/portainer
+    expose:
+      # Expose HTTP port (9000) to make it accessible for other containers in the same network
+      - "9000"
+      - "9443"
+
+  nginx:
+    image: nginx:1.25.3-alpine
+    restart: unless-stopped
+    labels:
+      - traefik.http.routers.web.rule=PathPrefix(`/web`)
+      - traefik.http.routers.web.middlewares=web-stripprefix
+      - traefik.http.middlewares.web-stripprefix.stripprefix.prefixes=/web
+
+  prometheus:
+    image: prom/prometheus:v2.49.1
+    restart: unless-stopped
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+      - ./prometheus/web.yml:/etc/prometheus/web.yml
+      - prometheus:/prometheus
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --web.config.file=/etc/prometheus/web.yml
+    labels:
+      - traefik.http.routers.prometheus.rule=PathPrefix(`/prometheus`)
+      - traefik.http.services.prometheus.loadbalancer.server.port=9090
+      - traefik.http.routers.prometheus.middlewares=prometheus
+      - traefik.http.middlewares.prometheus.stripprefix.prefixes=/prometheus
+
+  node_exporter:
+    image: quay.io/prometheus/node-exporter:v1.7.0
+    container_name: node_exporter
+    command:
+      - '--path.rootfs=/host'
+    network_mode: host
+    pid: host
+    restart: unless-stopped
+    volumes:
+      - '/:/host:ro,rslave'
+
+  grafana:
+    container_name: grafana
+    image: grafana/grafana:10.2.3
+    depends_on:
+      - prometheus
+      - node_exporter
+    volumes:
+      - grafana:/var/lib/grafana
+      - ./grafana/:/etc/grafana/provisioning/
+    restart: unless-stopped
+    labels:
+      - traefik.http.routers.grafana.rule=PathPrefix(`/grafana`)
+      - traefik.http.services.grafana.loadbalancer.server.port=3000
+      - traefik.http.routers.grafana.middlewares=grafana
+      - traefik.http.middlewares.grafana.stripprefix.prefixes=/grafana
+
+volumes:
+  grafana:
+  portainer:
+  prometheus:
