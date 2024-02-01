@@ -1,0 +1,13 @@
+$TTL    604800
+@       IN      SOA     homelab.internal. root.homelab.internal. (
+                              2         ; Serial
+                         604800         ; Refresh
+                          86400         ; Retry
+                        2419200         ; Expire
+                         604800 )       ; Negative Cache TTL
+;
+@      IN    NS    ns.homelab.internal.
+@      IN    A     1.2.3.10
+
+foo    IN    A     1.2.3.4
+bar    IN    A     1.2.3.5

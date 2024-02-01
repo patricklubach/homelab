@@ -1,0 +1,4 @@
+zone "homelab.internal" {
+    type master;
+    file "/etc/bind/db.homelab.internal";
+};
